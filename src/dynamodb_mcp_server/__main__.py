@@ -15,6 +15,7 @@ Usage:
 
 import argparse
 import logging
+import os
 
 import dynamodb_mcp_server.tools.table_management  # noqa: F401
 from dynamodb_mcp_server.server import mcp
@@ -39,6 +40,16 @@ def _parse_args() -> argparse.Namespace:
         default="stdio",
         help="Transport mode: stdio (default, for uvx/local) or http (remote deployment)",
     )
+    parser.add_argument(
+        "--region",
+        default=None,
+        help="AWS region (overrides AWS_REGION env var, default: us-east-1)",
+    )
+    parser.add_argument(
+        "--endpoint-url",
+        default=None,
+        help="Custom endpoint URL for DynamoDB Local or LocalStack (overrides AWS_ENDPOINT_URL)",
+    )
     return parser.parse_args()
 
 
@@ -46,6 +57,16 @@ def main() -> None:
     """Start the DynamoDB MCP server with the selected transport."""
     args = _parse_args()
     transport = TRANSPORT_ALIASES[args.transport]
+
+    # Apply CLI overrides to environment (picked up by app_lifespan)
+    if args.region is not None:
+        os.environ["AWS_REGION"] = args.region
+    if args.endpoint_url is not None:
+        os.environ["AWS_ENDPOINT_URL"] = args.endpoint_url
+
+    # Get values (either from env or CLI override)
+    region = os.environ.get("AWS_REGION", "us-east-1")
+    endpoint_url = os.environ.get("AWS_ENDPOINT_URL")
 
     if transport == "stdio":
         logger.info("Starting DynamoDB MCP server (stdio transport)")
@@ -56,6 +77,7 @@ def main() -> None:
             mcp.settings.port,
             mcp.settings.streamable_http_path,
         )
+    logger.info("Using region=%s, endpoint_url=%s", region, endpoint_url or "AWS (default)")
 
     mcp.run(transport=transport)
 
