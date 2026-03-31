@@ -1,0 +1,48 @@
+[build-system]
+requires = ["uv_build>=0.11.2,<0.12"]
+build-backend = "uv_build"
+
+[project]
+name = "dynamodb-mcp-server"
+version = "0.1.0"
+description = "MCP server providing DynamoDB tools for LLM agents"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "mcp[cli]",
+    "aioboto3",
+    "pydantic>=2.0",
+]
+
+[project.scripts]
+dynamodb-mcp-server = "dynamodb_mcp_server.__main__:main"
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "moto[dynamodb]",
+    "ruff",
+    "mypy",
+    "boto3-stubs[dynamodb]",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["dynamodb_mcp_server"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
