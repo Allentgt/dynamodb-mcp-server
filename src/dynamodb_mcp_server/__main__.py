@@ -17,7 +17,7 @@ import argparse
 import logging
 import os
 
-import dynamodb_mcp_server.tools.table_management  # noqa: F401
+from dynamodb_mcp_server.tools import table_management, item_operations, query_scan # noqa: F401
 from dynamodb_mcp_server.server import mcp
 
 logging.basicConfig(
