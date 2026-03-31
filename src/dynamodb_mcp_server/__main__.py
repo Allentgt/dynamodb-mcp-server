@@ -16,8 +16,6 @@ Usage:
 import argparse
 import logging
 
-import dynamodb_mcp_server.tools.item_operations
-import dynamodb_mcp_server.tools.query_scan
 import dynamodb_mcp_server.tools.table_management  # noqa: F401
 from dynamodb_mcp_server.server import mcp
 

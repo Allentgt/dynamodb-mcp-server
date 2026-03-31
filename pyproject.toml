@@ -12,6 +12,8 @@ dependencies = [
     "mcp[cli]",
     "aioboto3",
     "pydantic>=2.0",
+    "pydantic-settings>=2.13.1",
+    "boto3-stubs>=1.42.78",
 ]
 
 [project.scripts]
