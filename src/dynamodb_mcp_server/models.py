@@ -82,6 +82,52 @@ class CreateGsiInput(BaseModel):
     )
 
 
+class CreateTableInput(BaseModel):
+    """Input for create_table tool."""
+
+    table_name: str = Field(
+        min_length=3,
+        max_length=255,
+        description="Name for the new DynamoDB table (3-255 characters).",
+    )
+    partition_key: str = Field(
+        min_length=1,
+        description="Attribute name for the partition (hash) key.",
+    )
+    partition_key_type: str = Field(
+        default="S",
+        description="DynamoDB type for the partition key: S (string), N (number), or B (binary).",
+    )
+    sort_key: str | None = Field(
+        default=None,
+        description="Optional attribute name for the sort (range) key.",
+    )
+    sort_key_type: str = Field(
+        default="S",
+        description="DynamoDB type for the sort key: S (string), N (number), or B (binary). "
+        "Only used if sort_key is provided.",
+    )
+    billing_mode: str = Field(
+        default="PAY_PER_REQUEST",
+        description="Billing mode: PAY_PER_REQUEST (on-demand, default) "
+        "or PROVISIONED (requires read/write capacity units).",
+    )
+    read_capacity_units: int | None = Field(
+        default=None,
+        ge=1,
+        description="Provisioned read capacity units. Required when billing_mode is PROVISIONED.",
+    )
+    write_capacity_units: int | None = Field(
+        default=None,
+        ge=1,
+        description="Provisioned write capacity units. Required when billing_mode is PROVISIONED.",
+    )
+    tags: dict[str, str] | None = Field(
+        default=None,
+        description="Optional tags to apply to the table, e.g. {'Environment': 'production'}.",
+    )
+
+
 class QueryTableInput(BaseModel):
     """Input for query_table tool."""
 

@@ -1,6 +1,6 @@
 """MCP tools for DynamoDB table management operations.
 
-Includes: list_tables, describe_table, create_gsi
+Includes: list_tables, describe_table, create_table, create_gsi
 """
 
 import logging
@@ -11,7 +11,12 @@ from mcp.server.fastmcp import Context
 from mcp.server.session import ServerSession
 from mcp.types import ToolAnnotations
 
-from dynamodb_mcp_server.models import CreateGsiInput, DescribeTableInput, ListTablesInput
+from dynamodb_mcp_server.models import (
+    CreateGsiInput,
+    CreateTableInput,
+    DescribeTableInput,
+    ListTablesInput,
+)
 from dynamodb_mcp_server.server import AppContext, mcp
 from dynamodb_mcp_server.utils import handle_client_error, to_json, truncate_response
 
@@ -141,6 +146,84 @@ async def describe_table(
         ]
 
     return truncate_response(to_json(result))
+
+
+@mcp.tool(
+    name="create_table",
+    annotations=ToolAnnotations(
+        readOnlyHint=False,
+        destructiveHint=False,
+        idempotentHint=False,
+        openWorldHint=True,
+    ),
+)
+async def create_table(
+    input: CreateTableInput,
+    ctx: Context[ServerSession, AppContext],
+) -> str:
+    """Create a new DynamoDB table.
+
+    Creates a table with a partition key and optional sort key. Defaults to
+    on-demand billing (PAY_PER_REQUEST). Use describe_table to monitor the
+    table until it reaches ACTIVE status.
+
+    When to use:
+    - To create a new table for storing data
+    - When setting up a new access pattern
+
+    When NOT to use:
+    - If the table already exists (check with list_tables or describe_table first)
+
+    Returns:
+        JSON with table name, status, key schema, and billing mode.
+    """
+    app_ctx = ctx.request_context.lifespan_context
+
+    key_schema = [{"AttributeName": input.partition_key, "KeyType": "HASH"}]
+    attr_defs = [{"AttributeName": input.partition_key, "AttributeType": input.partition_key_type}]
+
+    if input.sort_key:
+        key_schema.append({"AttributeName": input.sort_key, "KeyType": "RANGE"})
+        attr_defs.append({"AttributeName": input.sort_key, "AttributeType": input.sort_key_type})
+
+    params: dict[str, Any] = {
+        "TableName": input.table_name,
+        "KeySchema": key_schema,
+        "AttributeDefinitions": attr_defs,
+        "BillingMode": input.billing_mode,
+    }
+
+    if input.billing_mode == "PROVISIONED":
+        if not input.read_capacity_units or not input.write_capacity_units:
+            return (
+                "Error: read_capacity_units and write_capacity_units are required "
+                "when billing_mode is PROVISIONED."
+            )
+        params["ProvisionedThroughput"] = {
+            "ReadCapacityUnits": input.read_capacity_units,
+            "WriteCapacityUnits": input.write_capacity_units,
+        }
+
+    if input.tags:
+        params["Tags"] = [{"Key": k, "Value": v} for k, v in input.tags.items()]
+
+    try:
+        async with app_ctx.session.client("dynamodb", endpoint_url=app_ctx.endpoint_url) as client:
+            response = await client.create_table(**params)
+    except ClientError as e:
+        return handle_client_error(e, "create_table", input.table_name)
+
+    table_desc = response["TableDescription"]
+    result = {
+        "message": f"Table '{input.table_name}' creation initiated.",
+        "table_name": table_desc["TableName"],
+        "status": table_desc["TableStatus"],
+        "key_schema": table_desc["KeySchema"],
+        "attribute_definitions": table_desc["AttributeDefinitions"],
+        "billing_mode": input.billing_mode,
+        "next_step": "Use describe_table to monitor the table until status is ACTIVE.",
+    }
+    return to_json(result)
 
 
 @mcp.tool(

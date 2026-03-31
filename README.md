@@ -1,11 +1,11 @@
 # dynamodb-mcp-server
 
-A remote MCP (Model Context Protocol) server that gives LLM agents full access to Amazon DynamoDB. Built with [FastMCP](https://github.com/jlowin/fastmcp) and [aioboto3](https://github.com/terrycain/aioboto3), it exposes 10 tools over streamable HTTP that cover table management, querying, scanning, and item CRUD operations.
+An MCP (Model Context Protocol) server that gives LLM agents full access to Amazon DynamoDB. Built with [FastMCP](https://github.com/jlowin/fastmcp) and [aioboto3](https://github.com/terrycain/aioboto3), it exposes 11 tools covering table management, querying, scanning, and item CRUD operations. Supports both **stdio** (for `uvx` / local clients) and **streamable HTTP** (for remote deployment).
 
 ## Features
 
-- **10 DynamoDB tools** — list, describe, query, scan, create GSI, add/update/delete items, bulk add, prune
-- **Streamable HTTP transport** — deploy as a remote server, not a local stdio process
+- **11 DynamoDB tools** — list, describe, create table, query, scan, create GSI, add/update/delete items, bulk add, prune
+- **Dual transport** — stdio (default, for `uvx` / Claude Desktop / Cursor) and streamable HTTP (for remote deployment)
 - **Async end-to-end** — aioboto3 for non-blocking DynamoDB access
 - **Structured input validation** — Pydantic models with field descriptions that become tool parameter docs
 - **Dual output formats** — JSON or Markdown, controlled per request
@@ -27,17 +27,26 @@ A remote MCP (Model Context Protocol) server that gives LLM agents full access t
 
 ```bash
 # Clone the repository
-git clone <repo-url>
+git clone https://github.com/Allentgt/dynamodb-mcp-server.git
 cd dynamodb-mcp-server
 
 # Install dependencies
 uv sync
 
-# Run the server
+# Run the server (stdio transport, default)
 uv run dynamodb-mcp-server
+
+# Run with HTTP transport for remote deployment
+uv run dynamodb-mcp-server --transport http
 ```
 
-The server starts on `http://0.0.0.0:8008/mcp` by default.
+The default transport is **stdio** (for local MCP clients). Use `--transport http` to start a streamable HTTP server on `http://0.0.0.0:8008/mcp`.
+
+### Install via uvx (no clone needed)
+
+```bash
+uvx --from git+https://github.com/Allentgt/dynamodb-mcp-server.git dynamodb-mcp-server
+```
 
 ### Install from Wheel
 
@@ -84,7 +93,28 @@ uv run dynamodb-mcp-server
 
 ### MCP Client Configuration
 
-Add to your MCP client config (e.g., Claude Desktop, Cursor, etc.):
+**Recommended: stdio via `uvx`** (Claude Desktop, Cursor, etc.)
+
+```json
+{
+  "mcpServers": {
+    "dynamodb": {
+      "command": "uvx",
+      "args": [
+        "--from", "git+https://github.com/Allentgt/dynamodb-mcp-server.git",
+        "dynamodb-mcp-server"
+      ],
+      "env": {
+        "AWS_REGION": "us-east-1",
+        "AWS_ACCESS_KEY_ID": "your-key",
+        "AWS_SECRET_ACCESS_KEY": "your-secret"
+      }
+    }
+  }
+}
+```
+
+**Alternative: remote HTTP server**
 
 ```json
 {
@@ -104,6 +134,7 @@ Add to your MCP client config (e.g., Claude Desktop, Cursor, etc.):
 |---|---|---|
 | `list_tables` | List all DynamoDB tables in the configured region. Supports pagination. | read-only, idempotent |
 | `describe_table` | Get table schema, key definitions, GSIs/LSIs, billing mode, item count, and size. | read-only, idempotent |
+| `create_table` | Create a new table with partition key, optional sort key, and billing mode. | mutating, not idempotent |
 | `create_gsi` | Create a Global Secondary Index on a table. Specify key schema and projection type. | mutating, not idempotent |
 
 ### Query & Scan
@@ -129,6 +160,18 @@ Add to your MCP client config (e.g., Claude Desktop, Cursor, etc.):
 
 ```json
 { "limit": 10 }
+```
+
+### Create a table
+
+```json
+{
+  "table_name": "orders",
+  "partition_key": "PK",
+  "sort_key": "SK",
+  "sort_key_type": "S",
+  "billing_mode": "PAY_PER_REQUEST"
+}
 ```
 
 ### Query with key condition
@@ -249,7 +292,7 @@ uv build  # Produces .tar.gz and .whl in dist/
 
 ## Architecture Notes
 
-- **Transport**: Streamable HTTP (not stdio) — designed for remote deployment
+- **Transport**: Stdio (default) for local clients like `uvx`, Claude Desktop, Cursor. Streamable HTTP (`--transport http`) for remote/shared deployments
 - **Async**: All tool handlers are async. DynamoDB calls go through aioboto3 to avoid blocking the event loop
 - **Lifespan pattern**: `app_lifespan()` creates a shared `aioboto3.Session` stored in `AppContext`, available to all tools via `ctx.request_context.lifespan_context`
 - **Error handling**: `ClientError` exceptions are caught and mapped to actionable messages (e.g., "Table not found — use list_tables to see available tables")

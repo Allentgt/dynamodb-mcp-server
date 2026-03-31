@@ -1,10 +1,20 @@
-"""Tests for table management tools: list_tables, describe_table, create_gsi."""
+"""Tests for table management tools: list_tables, describe_table, create_table, create_gsi."""
 
 import json
 from typing import Any
 
-from dynamodb_mcp_server.models import CreateGsiInput, DescribeTableInput, ListTablesInput
-from dynamodb_mcp_server.tools.table_management import create_gsi, describe_table, list_tables
+from dynamodb_mcp_server.models import (
+    CreateGsiInput,
+    CreateTableInput,
+    DescribeTableInput,
+    ListTablesInput,
+)
+from dynamodb_mcp_server.tools.table_management import (
+    create_gsi,
+    create_table,
+    describe_table,
+    list_tables,
+)
 from tests.conftest import FakeContext
 
 
@@ -137,3 +147,112 @@ class TestCreateGsi:
         desc_data = json.loads(desc_result)
         gsi_names = [g["index_name"] for g in desc_data.get("global_secondary_indexes", [])]
         assert "verify-index" in gsi_names
+
+
+class TestCreateTable:
+    async def test_creates_hash_only_table(self, ctx: FakeContext) -> None:
+        result = await create_table(
+            CreateTableInput(table_name="new-table", partition_key="PK"), ctx
+        )
+        data = json.loads(result)
+        assert data["table_name"] == "new-table"
+        assert data["status"] in ("ACTIVE", "CREATING")
+        assert data["billing_mode"] == "PAY_PER_REQUEST"
+        assert len(data["key_schema"]) == 1
+        assert data["key_schema"][0]["AttributeName"] == "PK"
+        assert data["key_schema"][0]["KeyType"] == "HASH"
+        assert "next_step" in data
+
+    async def test_creates_composite_key_table(self, ctx: FakeContext) -> None:
+        result = await create_table(
+            CreateTableInput(
+                table_name="composite-new",
+                partition_key="PK",
+                partition_key_type="S",
+                sort_key="SK",
+                sort_key_type="S",
+            ),
+            ctx,
+        )
+        data = json.loads(result)
+        assert data["table_name"] == "composite-new"
+        assert len(data["key_schema"]) == 2
+        key_names = {k["AttributeName"] for k in data["key_schema"]}
+        assert key_names == {"PK", "SK"}
+
+    async def test_creates_number_key_table(self, ctx: FakeContext) -> None:
+        result = await create_table(
+            CreateTableInput(
+                table_name="numeric-table",
+                partition_key="id",
+                partition_key_type="N",
+            ),
+            ctx,
+        )
+        data = json.loads(result)
+        assert data["attribute_definitions"][0]["AttributeType"] == "N"
+
+    async def test_creates_provisioned_table(self, ctx: FakeContext) -> None:
+        result = await create_table(
+            CreateTableInput(
+                table_name="provisioned-table",
+                partition_key="PK",
+                billing_mode="PROVISIONED",
+                read_capacity_units=5,
+                write_capacity_units=5,
+            ),
+            ctx,
+        )
+        data = json.loads(result)
+        assert data["table_name"] == "provisioned-table"
+        assert data["billing_mode"] == "PROVISIONED"
+
+    async def test_provisioned_missing_capacity_returns_error(self, ctx: FakeContext) -> None:
+        result = await create_table(
+            CreateTableInput(
+                table_name="bad-provisioned",
+                partition_key="PK",
+                billing_mode="PROVISIONED",
+            ),
+            ctx,
+        )
+        assert "Error" in result
+        assert "read_capacity_units" in result
+
+    async def test_duplicate_table_returns_error(self, ctx: FakeContext, simple_table: str) -> None:
+        result = await create_table(
+            CreateTableInput(table_name=simple_table, partition_key="PK"), ctx
+        )
+        assert "Error" in result
+
+    async def test_created_table_visible_in_list(self, ctx: FakeContext) -> None:
+        await create_table(CreateTableInput(table_name="visible-table", partition_key="PK"), ctx)
+        list_result = await list_tables(ListTablesInput(), ctx)
+        list_data = json.loads(list_result)
+        assert "visible-table" in list_data["table_names"]
+
+    async def test_created_table_describable(self, ctx: FakeContext) -> None:
+        await create_table(
+            CreateTableInput(
+                table_name="describe-me",
+                partition_key="PK",
+                sort_key="SK",
+            ),
+            ctx,
+        )
+        desc_result = await describe_table(DescribeTableInput(table_name="describe-me"), ctx)
+        desc_data = json.loads(desc_result)
+        assert desc_data["table_name"] == "describe-me"
+        assert len(desc_data["key_schema"]) == 2
+
+    async def test_creates_table_with_tags(self, ctx: FakeContext) -> None:
+        result = await create_table(
+            CreateTableInput(
+                table_name="tagged-table",
+                partition_key="PK",
+                tags={"Environment": "test", "Team": "platform"},
+            ),
+            ctx,
+        )
+        data = json.loads(result)
+        assert data["table_name"] == "tagged-table"

@@ -121,6 +121,9 @@ class AsyncClient:
     async def update_table(self, **kwargs: Any) -> dict[str, Any]:
         return self._client.update_table(**kwargs)
 
+    async def create_table(self, **kwargs: Any) -> dict[str, Any]:
+        return self._client.create_table(**kwargs)
+
 
 class MockSession:
     """Drop-in replacement for aioboto3.Session that uses sync boto3 under moto.
